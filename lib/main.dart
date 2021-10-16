@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'bloc/connectivity_bloc/connectivity_bloc.dart';
 import 'bloc/connectivity_bloc/connectivity_event.dart';
+import 'bloc/currencies_bloc/currencies_bloc.dart';
 
 
 
@@ -15,6 +16,7 @@ import 'bloc/connectivity_bloc/connectivity_event.dart';
 void main() {
   runApp(MultiBlocProvider(providers: [
     BlocProvider<ConnectivityBloc>(create: (context) => ConnectivityBloc()),
+    BlocProvider<CurrenciesBloc>(create: (context) => CurrenciesBloc()),
   ], child: const CurrencyViewerApp(key: Key("key"))));
 }
 
@@ -44,27 +46,5 @@ class _CurrencyViewerAppState extends State<CurrencyViewerApp> {
         ),
       ),
     );
-  }
-
-  @override
-  Future<void> didChangeDependencies() async {
-    super.didChangeDependencies();
-
-    print("DCD+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-
-    Connectivity().checkConnectivity().then((value) {
-      if (value == ConnectivityResult.none) {
-        context.read<ConnectivityBloc>().add(OfflineEvent());
-      } else {
-        context.read<ConnectivityBloc>().add(OnlineEvent());
-      }
-    });
-    Connectivity().onConnectivityChanged.listen((ConnectivityResult result) {
-      if (result == ConnectivityResult.none) {
-        context.read<ConnectivityBloc>().add(OfflineEvent());
-      } else {
-        context.read<ConnectivityBloc>().add(OnlineEvent());
-      }
-    });
   }
 }
