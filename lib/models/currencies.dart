@@ -26,7 +26,6 @@ class Currencies {
         'https://www.nbrb.by/api/exrates/rates?ondate=' +
             date +
             '&periodicity=0'));
-    print(response.statusCode);
     return response;
   }
 }
