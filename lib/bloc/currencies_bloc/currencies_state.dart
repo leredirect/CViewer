@@ -1,17 +1,11 @@
 import 'package:currencies_viewer_test/models/currencies.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'currencies_event.dart';
+enum ConnectionStates { hasError, noError, offline }
 
 class CurrenciesState {
   List<Currencies> currencies;
   ConnectionStates connectionState;
-String statusCode;
-  CurrenciesState(this.currencies, this.connectionState, this.statusCode);
-}
+  String statusCode;
 
-enum ConnectionStates{
-  hasError,
-  noError,
-  offline
+  CurrenciesState(this.currencies, this.connectionState, this.statusCode);
 }

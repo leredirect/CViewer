@@ -10,7 +10,7 @@ class CurrenciesBloc extends Bloc<CurrenciesEvent, CurrenciesState> {
   Stream<CurrenciesState> mapEventToState(CurrenciesEvent event) async* {
     if (event is UpdateEvent) {
       yield CurrenciesState(event.currencies, ConnectionStates.noError, "");
-    } else if(event is ErrorEvent){
+    } else if (event is ErrorEvent) {
       yield CurrenciesState([], ConnectionStates.hasError, event.statusCode);
     }
   }
