@@ -6,8 +6,8 @@ import 'currencies_event.dart';
 class CurrenciesState {
   List<Currencies> currencies;
   ConnectionStates connectionState;
-
-  CurrenciesState(this.currencies, this.connectionState);
+String statusCode;
+  CurrenciesState(this.currencies, this.connectionState, this.statusCode);
 }
 
 enum ConnectionStates{

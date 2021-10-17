@@ -8,5 +8,7 @@ class UpdateEvent extends CurrenciesEvent {
 }
 
 class ErrorEvent extends CurrenciesEvent {
+    late String statusCode;
 
+    ErrorEvent(this.statusCode);
 }

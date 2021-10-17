@@ -7,8 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'bloc/connectivity_bloc/connectivity_bloc.dart';
-import 'bloc/connectivity_bloc/connectivity_event.dart';
 import 'bloc/currencies_bloc/currencies_bloc.dart';
+import 'bloc/filtered_currencies_bloc/filtered_currencies_bloc.dart';
 
 
 
@@ -17,6 +17,7 @@ void main() {
   runApp(MultiBlocProvider(providers: [
     BlocProvider<ConnectivityBloc>(create: (context) => ConnectivityBloc()),
     BlocProvider<CurrenciesBloc>(create: (context) => CurrenciesBloc()),
+    BlocProvider<FilteredCurrenciesBloc>(create: (context) => FilteredCurrenciesBloc()),
   ], child: const CurrencyViewerApp(key: Key("key"))));
 }
 
