@@ -4,11 +4,16 @@ import 'dart:io';
 import 'package:currencies_viewer_test/bloc/currencies_bloc/currencies_bloc.dart';
 import 'package:currencies_viewer_test/bloc/currencies_bloc/currencies_event.dart';
 import 'package:currencies_viewer_test/bloc/currencies_bloc/currencies_state.dart';
+import 'package:currencies_viewer_test/bloc/filtered_currencies_bloc/filtered_currencies_bloc.dart';
 import 'package:currencies_viewer_test/models/currencies.dart';
+import 'package:currencies_viewer_test/widgets/currencies_list_widget.dart';
+import 'package:currencies_viewer_test/widgets/error_widget.dart';
+import 'package:currencies_viewer_test/widgets/loading_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 import 'package:intl/intl.dart';
 
@@ -20,12 +25,41 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Future<dynamic> responseTransformer() async {
+  List<Data> sorter(List<Data> data, List<String> values) {
+    List<Data> result = [];
+
+    for (int i = 0; i < values.length; i++) {
+      result.add(
+          data.firstWhere((element) => element.curAbbreviation == values[i]));
+    }
+
+    return result;
+  }
+
+  Future<void> responseTransformer() async {
+    /// Loading and parsing logic:
+    /// 1. The NBRB API blocks requests using a
+    /// firewall for multiple requests within a minute. Therefore, a user
+    /// with frequent use of PullToRefresh will be highly likely to
+    /// frequently catch the HTTP 403 error. Using Future.Delayed allows
+    /// you to reduce the probability of catching an error.
+    ///
+    /// 2. I'm not sure if this is this because I did a test task on
+    /// the weekend, but the API returns exactly the same response for today
+    /// and tomorrow (specifically for Saturday and Sunday, in me case).
+    /// Therefore, I act according to the following algorithm: if today's
+    /// data and tomorrow's data are identical, I put information about
+    /// today's and yesterday's exchange rates in the block. If the exchange
+    /// rate of at least one currency for tomorrow is different, I return
+    /// today's rate and tomorrow's rate.
+
     Response yesterdayCurrenciesResponse = await Currencies.fetchCurrencies(
         DateFormat('yyyy-MM-dd')
             .format(DateTime.now().subtract(const Duration(days: 1))));
+    await Future.delayed(const Duration(seconds: 3));
     Response todayCurrenciesResponse = await Currencies.fetchCurrencies(
         DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    await Future.delayed(const Duration(seconds: 3));
     Response tomorrowCurrenciesResponse = await Currencies.fetchCurrencies(
         DateFormat('yyyy-MM-dd')
             .format(DateTime.now().add(const Duration(days: 1))));
@@ -41,22 +75,48 @@ class _HomeScreenState extends State<HomeScreen> {
         Currencies tomorrowCurrencies = Currencies.fromJson(
             json.decode('{"data" : ' + tomorrowCurrenciesResponse.body + '}'));
 
-        //TODO: comment about logic
+        List<double> todayRates =
+            todayCurrencies.data.map((e) => e.curOfficialRate).toList();
+        List<double> tomorrowRates =
+            tomorrowCurrencies.data.map((e) => e.curOfficialRate).toList();
 
-        List<double> todayRates = todayCurrencies.data.map((e) => e.curOfficialRate).toList();
-        List<double> tomorrowRates = tomorrowCurrencies.data.map((e) => e.curOfficialRate).toList();
+        if (listEquals(todayRates, tomorrowRates) || tomorrowRates.isEmpty) {
+          List<Currencies> dataToBloc = [];
 
-        if (listEquals(todayRates,tomorrowRates)) {
-          List<Currencies> dataToBloc = [todayCurrencies, yesterdayCurrencies];
+          var orderBox = await Hive.openBox('order');
+          if (orderBox.isNotEmpty) {
+            List<String> order = orderBox.get('list');
+            todayCurrencies.data = sorter(todayCurrencies.data, order);
+            yesterdayCurrencies.data = sorter(yesterdayCurrencies.data, order);
+            orderBox.close();
+          }
+          dataToBloc = [todayCurrencies, yesterdayCurrencies];
           context.read<CurrenciesBloc>().add(UpdateEvent(dataToBloc));
-          return dataToBloc;
         } else {
-          List<Currencies> dataToBloc = [todayCurrencies, tomorrowCurrencies];
+          List<Currencies> dataToBloc = [];
+
+          var orderBox = await Hive.openBox('order');
+          if (orderBox.isNotEmpty) {
+            List<String> order = orderBox.get('list');
+            todayCurrencies.data = sorter(todayCurrencies.data, order);
+            tomorrowCurrencies.data = sorter(tomorrowCurrencies.data, order);
+            orderBox.close();
+          }
+          dataToBloc = [todayCurrencies, tomorrowCurrencies];
+
           context.read<CurrenciesBloc>().add(UpdateEvent(dataToBloc));
-          return dataToBloc;
         }
+        break;
       default:
-        context.read<CurrenciesBloc>().add(ErrorEvent());
+        List<int> statusCodes = {
+          yesterdayCurrenciesResponse.statusCode,
+          todayCurrenciesResponse.statusCode,
+          tomorrowCurrenciesResponse.statusCode
+        }.toList();
+        statusCodes.removeWhere((element) => element == 200);
+        context
+            .read<CurrenciesBloc>()
+            .add(ErrorEvent("Код ошибки: ${statusCodes.toString()}"));
     }
   }
 
@@ -64,116 +124,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return BlocBuilder<CurrenciesBloc, CurrenciesState>(
         builder: (context, state) {
-      if (state.connectionState == ConnectionStates.noError &&
-          state.currencies.isNotEmpty) {
+      return BlocBuilder<FilteredCurrenciesBloc, List<String>>(
+          builder: (context, filterState) {
+        Widget _currentBody;
+        if (state.connectionState == ConnectionStates.noError &&
+            state.currencies.isNotEmpty) {
+          List<Data> firsDayList = [];
+          for (var a in state.currencies.first.data) {
+            firsDayList.add(a);
+          }
+          firsDayList
+              .removeWhere((e) => !filterState.contains(e.curAbbreviation));
+          List<Data> secondDayList = [];
+          for (var a in state.currencies.last.data) {
+            secondDayList.add(a);
+          }
+          secondDayList
+              .removeWhere((e) => !filterState.contains(e.curAbbreviation));
+          _currentBody = CurrenciesListWidget(
+            responseTransformer: responseTransformer,
+            firstDayCurrenciesBlocData: firsDayList,
+            secondDayCurrenciesBlocData: secondDayList,
+          );
+        } else if (state.connectionState == ConnectionStates.hasError) {
+          _currentBody =
+              ErrorScreenWidget(responseTransformer: responseTransformer);
+        } else {
+          _currentBody = const LoadingWidget();
+        }
         return Scaffold(
-          appBar: AppBar(
-            title: const Text("Курсы валют"),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                  onPressed: () {
-                    Navigator.of(context).pushNamed('settings');
-                  },
-                  icon: const Icon(Icons.settings_sharp)),
-            ],
-          ),
-          body: RefreshIndicator(
-            onRefresh: () async {
-              try {
-                await responseTransformer();
-              } on SocketException catch (e) {
-                context.read<CurrenciesBloc>().add(ErrorEvent());
-              }
-            },
-            child: Container(
-              margin: const EdgeInsets.all(10),
-              child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: context
-                      .read<CurrenciesBloc>()
-                      .state
-                      .currencies
-                      .first
-                      .data
-                      .length,
-                  itemBuilder: (BuildContext context, index) {
-                    return Container(
-                      margin: const EdgeInsets.only(top: 10),
-                      color: Colors.blueGrey,
-                      width: 300,
-                      height: 30,
-                      child: Row(
-                        children: [
-                          Text(context
-                              .read<CurrenciesBloc>()
-                              .state
-                              .currencies
-                              .first
-                              .data[index]
-                              .curName),
-                          Spacer(),
-                          Text(context
-                              .read<CurrenciesBloc>()
-                              .state
-                              .currencies
-                              .first
-                              .data[index]
-                              .curOfficialRate
-                              .toString()),
-                          Spacer(),
-                          Text(context
-                              .read<CurrenciesBloc>()
-                              .state
-                              .currencies
-                              .last
-                              .data[index]
-                              .curOfficialRate
-                              .toString()),
-                        ],
-                      ),
-                    );
-                  }),
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              title: const Text("Курсы валют"),
+              centerTitle: true,
+              actions: [
+                Visibility(
+                  visible: state.connectionState == ConnectionStates.noError &&
+                      state.currencies.isNotEmpty,
+                  child: IconButton(
+                      onPressed: () {
+                        Navigator.of(context).pushNamed('settings');
+                      },
+                      icon: const Icon(Icons.settings_sharp)),
+                ),
+              ],
             ),
-          ),
-        );
-      } else if (state.connectionState == ConnectionStates.hasError) {
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text("Курсы валют"),
-            centerTitle: true,
-          ),
-          body: RefreshIndicator(
-            onRefresh: () async {
-              try {
-                await responseTransformer();
-              } on SocketException catch (e) {
-                context.read<CurrenciesBloc>().add(ErrorEvent());
-              }
-            },
-            child: SingleChildScrollView(
-              physics: AlwaysScrollableScrollPhysics(),
-              child: Container(
-                margin: EdgeInsets.only(top: MediaQuery.of(context).size.height/2.5),
-                child: Center(child: Text("Не удалось получить курсы валют.")),
-              ),
-            ),
-          )
-        );
-      } else {
-        return Container(
-          width: MediaQuery.of(context).size.width,
-          height: MediaQuery.of(context).size.height,
-          color: Colors.white,
-          child: const Center(
-            child: SizedBox(
-              height: 50,
-              width: 50,
-              child: CircularProgressIndicator(color: Colors.blueGrey),
-            ),
-          ),
-        );
-      }
+            body: _currentBody);
+      });
     });
   }
 
@@ -183,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await responseTransformer();
     } on SocketException catch (e) {
-      context.read<CurrenciesBloc>().add(ErrorEvent());
+      context.read<CurrenciesBloc>().add(ErrorEvent(e.message));
     }
   }
 }

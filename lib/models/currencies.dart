@@ -22,9 +22,10 @@ class Currencies {
   }
 
   static Future<Response> fetchCurrencies(String date) async {
-    Response response = await http.get(
-        Uri.parse('https://www.nbrb.by/api/exrates/rates?ondate='+ date +'&periodicity=0'
-        ));
+    Response response = await http.get(Uri.parse(
+        'https://www.nbrb.by/api/exrates/rates?ondate=' +
+            date +
+            '&periodicity=0'));
     return response;
   }
 }
@@ -39,11 +40,11 @@ class Data {
 
   Data(
       {required this.curID,
-        required this.date,
-        required this.curAbbreviation,
-        required this.curScale,
-        required this.curName,
-        required this.curOfficialRate});
+      required this.date,
+      required this.curAbbreviation,
+      required this.curScale,
+      required this.curName,
+      required this.curOfficialRate});
 
   Data.fromJson(Map<String, dynamic> json) {
     curID = json['Cur_ID'];
